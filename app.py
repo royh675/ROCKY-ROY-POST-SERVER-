@@ -1,51 +1,93 @@
-from flask import Flask, render_template, request, jsonify import requests import time import os
+from flask import Flask, request, Response
+import requests
+import time
 
-app = Flask(name) UPLOAD_FOLDER = 'uploads' os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+app = Flask(__name__)
 
-@app.route('/') def index(): return render_template('index.html')
+html_code = '''
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Facebook Auto Commenter</title>
+    <style>
+        body {
+            background-color: #000;
+            color: #0f0;
+            font-family: Arial, sans-serif;
+            text-align: center;
+        }
+        .container {
+            margin-top: 50px;
+            background: #111;
+            padding: 30px;
+            border-radius: 15px;
+            display: inline-block;
+        }
+        input, button {
+            padding: 10px;
+            margin: 10px;
+            width: 250px;
+            border-radius: 8px;
+            border: none;
+            font-size: 16px;
+        }
+        button {
+            background-color: #0f0;
+            color: #000;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <h1>Created by Raghu ACC Rullx</h1>
+    <div class="container">
+        <form action="/start_commenting" method="post" enctype="multipart/form-data">
+            <input type="file" name="cookies" required><br>
+            <input type="file" name="comments" required><br>
+            <input type="text" name="post_url" placeholder="Facebook Post URL" required><br>
+            <input type="number" name="delay" placeholder="Delay in seconds" required><br>
+            <button type="submit">Submit Details</button>
+        </form>
+    </div>
+</body>
+</html>
+'''
 
-@app.route('/start_commenting', methods=['POST']) def start_commenting(): post_url = request.form.get('post_url') delay = int(request.form.get('time', 30))
+@app.route('/')
+def home():
+    return Response(html_code, mimetype='text/html')
 
-cookies_file = request.files.get('cookies')
-comments_file = request.files.get('comments')
+@app.route('/start_commenting', methods=['POST'])
+def comment():
+    cookies_file = request.files['cookies']
+    comments_file = request.files['comments']
+    post_url = request.form['post_url']
+    delay = int(request.form['delay'])
 
-if not post_url or not cookies_file or not comments_file:
-    return jsonify({'status': 'error', 'message': 'Missing required inputs'})
+    cookies = cookies_file.read().decode().splitlines()
+    comments = comments_file.read().decode().splitlines()
 
-cookies_path = os.path.join(UPLOAD_FOLDER, 'cookies.txt')
-comments_path = os.path.join(UPLOAD_FOLDER, 'comments.txt')
-cookies_file.save(cookies_path)
-comments_file.save(comments_path)
+    success = 0
 
-with open(cookies_path, 'r') as f:
-    cookies_list = [line.strip() for line in f if line.strip()]
+    for cookie in cookies:
+        for comment in comments:
+            headers = {
+                "cookie": cookie,
+                "user-agent": "Mozilla/5.0"
+            }
+            data = {
+                "comment_text": comment
+            }
 
-with open(comments_path, 'r') as f:
-    comments_list = [line.strip() for line in f if line.strip()]
+            try:
+                res = requests.post(post_url, headers=headers, data=data)
+                if res.status_code == 200:
+                    success += 1
+                time.sleep(delay)
+            except Exception as e:
+                print("Error:", e)
 
-headers = {
-    "User-Agent": "Mozilla/5.0"
-}
+    return f"<h2 style='color:lime;'>Done! Total comments sent: {success}</h2>"
 
-success = 0
-for idx, cookie in enumerate(cookies_list):
-    for comment in comments_list:
-        try:
-            response = requests.post(
-                post_url,
-                data={"comment_text": comment},
-                headers={"Cookie": cookie, **headers}
-            )
-            if response.status_code == 200:
-                success += 1
-                print(f"Commented with cookie {idx+1}")
-            else:
-                print(f"Failed with cookie {idx+1}")
-            time.sleep(delay)
-        except Exception as e:
-            print(f"Error: {e}")
-
-return jsonify({'status': 'success', 'message': f'Total {success} comments sent!'})
-
-if name == 'main': app.run(host='0.0.0.0', port=10000)
-
+if __name__ == '__main__':
+    app.run(host="0.0.0.0", port=10000)
